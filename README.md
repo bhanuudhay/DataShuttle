@@ -1,5 +1,7 @@
 # DataShuttle
 
+🚀 **Live Demo:** [https://data-shuttle-nu.vercel.app/](https://data-shuttle-nu.vercel.app/)
+
 A web-based tool for connecting to MongoDB instances, browsing databases/collections, and copying data across clusters. Built with a **Next.js** frontend and a **FastAPI** backend, fully containerised with Docker Compose.
 
 ## Architecture
