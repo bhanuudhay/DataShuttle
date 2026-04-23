@@ -175,7 +175,7 @@ class MongoService:
             pending: list = []
             batch: list[InsertOne] = []
 
-            for doc in src_col.find({}, batch_size=BATCH_SIZE, no_cursor_timeout=True):
+            for doc in src_col.find({}, batch_size=BATCH_SIZE):
                 doc.pop("_id", None)
                 batch.append(InsertOne(doc))
 
