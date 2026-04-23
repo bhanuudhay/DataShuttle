@@ -1,0 +1,52 @@
+services:
+  # ---------- MongoDB (user auth DB) ----------
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  # ---------- Redis ----------
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  # ---------- FastAPI Backend ----------
+  backend:
+    build: ./mongo-dump-backend
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8003:8003"
+    environment:
+      MONGO_URI: mongodb://mongo:27017/datashuttle-users
+      JWT_SECRET: datashuttle-super-secret-key-change-in-production
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRY_MINUTES: 60
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      CORS_ORIGINS: "http://localhost:3000"
+    depends_on:
+      - mongo
+      - redis
+
+  # ---------- Next.js Frontend ----------
+  frontend:
+    build:
+      context: ./mongo-dump-frontend
+      args:
+        NEXT_PUBLIC_API_URL: "http://localhost:8003"
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  mongo_data:
