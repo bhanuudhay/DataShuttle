@@ -56,6 +56,7 @@ export default function GetStarted() {
   const [hasActiveSession, setHasActiveSession] = useState(false);
   const [creatingDb, setCreatingDb] = useState(false);
   const [createDbError, setCreateDbError] = useState("");
+  const [continueLoading, setContinueLoading] = useState(false);
 
   // backup
   const [backupRunning, setBackupRunning] = useState(false);
@@ -177,22 +178,27 @@ export default function GetStarted() {
   }
 
   async function handleContinue() {
-    if (!canContinue) return;
+    if (!canContinue || continueLoading) return;
+    setContinueLoading(true);
 
-    await fetch(`${API_URL}/api/session`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({
-        source_uri: sourceUri,
-        target_uri: targetUri,
-        source_db: selectedSourceDb,
-        target_db: finalTargetDb,
-        source_databases: result?.source_databases || [],
-        target_databases: result?.target_databases || [],
-      }),
-    });
+    try {
+      await fetch(`${API_URL}/api/session`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          source_uri: sourceUri,
+          target_uri: targetUri,
+          source_db: selectedSourceDb,
+          target_db: finalTargetDb,
+          source_databases: result?.source_databases || [],
+          target_databases: result?.target_databases || [],
+        }),
+      });
 
-    router.push(`/collections?source_db=${encodeURIComponent(selectedSourceDb!)}&target_db=${encodeURIComponent(finalTargetDb!)}`);
+      router.push(`/collections?source_db=${encodeURIComponent(selectedSourceDb!)}&target_db=${encodeURIComponent(finalTargetDb!)}`);
+    } catch {
+      setContinueLoading(false);
+    }
   }
 
   async function handleBackup() {
@@ -758,14 +764,20 @@ export default function GetStarted() {
               </button>
               <button
                 onClick={handleContinue}
-                disabled={!canContinue || backupRunning}
-                className={`flex-1 rounded-xl py-3.5 text-sm font-semibold shadow-md transition-all ${
-                  canContinue && !backupRunning
+                disabled={!canContinue || backupRunning || continueLoading}
+                className={`flex-1 rounded-xl py-3.5 text-sm font-semibold shadow-md transition-all flex items-center justify-center gap-2 ${
+                  canContinue && !backupRunning && !continueLoading
                     ? "bg-emerald-600 text-white hover:bg-emerald-700 hover:shadow-lg active:scale-[0.98] cursor-pointer"
                     : "bg-zinc-200 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-600 cursor-not-allowed"
                 }`}
               >
-                Continue
+                {continueLoading && (
+                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                )}
+                {continueLoading ? "Loading..." : "Continue"}
               </button>
             </div>
           </>
