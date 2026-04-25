@@ -126,6 +126,82 @@ If the database lists differ, you have two separate MongoDB instances.
 
 > **Note:** The backend container connects to MongoDB over Docker's internal network (`mongodb://mongo:27017`), so it is unaffected by host port conflicts.
 
+## Connecting to remote MongoDB (Dev via SSM, Stg via VPN)
+
+The backend opens outbound connections to whatever MongoDB URI the UI submits. Two things to keep in mind:
+
+1. **Dev uses AWS SSM port-forwarding** — a tunnel on your host's loopback.
+2. **Stg uses VPN** — private IPs like `10.1.1.x` are reachable only from your host, not from inside Docker.
+
+### Dev — open the SSM tunnel and use the matching port
+
+Pick one local port (the example uses `8000`) and use it in **both** places:
+
+```bash
+# 1. Log in
+saml2aws login \
+  --idp-account "arn:aws:iam::611263743042:role/shyftlabs-relay" \
+  --profile "dev" \
+  --session-duration 900 \
+  --browser-type=chrome \
+  --skip-prompt
+
+# 2. Start the tunnel  (localPortNumber MUST match the port in your mongo URI)
+aws ssm start-session \
+  --target i-0236341c888eb9c64 \
+  --profile "dev" \
+  --document-name AWS-StartPortForwardingSessionToRemoteHost \
+  --parameters '{
+    "host": ["10.1.1.228"],
+    "portNumber": ["27017"],
+    "localPortNumber": ["8000"]
+  }'
+```
+
+Then in the UI, use:
+
+```
+mongodb://<user>:<pass>@127.0.0.1:8000/?directConnection=true&authSource=<authDb>
+```
+
+> The `Connection refused` error on `127.0.0.1:8009` you saw earlier was a **port mismatch** — the tunnel was on `8000`, the URI said `8009`. Always keep them identical.
+
+When the backend runs inside Docker, the code automatically rewrites `127.0.0.1` / `localhost` in the URI to `host.docker.internal` so the container can reach the tunnel on the host. No change to your URI is needed.
+
+### Stg — run the backend on the host (not in Docker)
+
+When the VPN is up, the route to `10.1.1.114` lives on your Windows host. Docker Desktop on Windows does **not** push those routes into the container, so `mongodb://...@10.1.1.114:27017` will hang with `No servers found yet` when attempted from the Dockerised backend.
+
+**Fix:** stop the Dockerised backend and run it directly on the host for the duration of the stg session:
+
+```powershell
+# Stop only the backend container; leave mongo + redis + frontend running
+docker compose stop backend
+
+# In a fresh terminal, run the backend on the host
+cd mongo-dump-backend
+python -m venv .venv; .venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8003 --reload
+```
+
+Then use the stg URI as-is:
+
+```
+mongodb://<user>:<pass>@10.1.1.114:27017/<db>?authSource=<authDb>
+```
+
+With the backend on the host, it sees the VPN routes and can reach `10.1.1.114` directly. The same host-run backend also works for Dev (it reaches the SSM tunnel on real `127.0.0.1`, so no rewrite is needed).
+
+### Quick troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `Connection refused` on `127.0.0.1:<port>` | SSM tunnel not running OR port mismatch | Start the SSM session; make the URI's port equal to `localPortNumber` |
+| `No servers found yet` for `10.x.x.x` | Backend in Docker, VPN only on host | Run backend on host with `uvicorn` (see above) |
+| `Authentication failed` | Wrong `authSource`, user, or password | Add `?authSource=<db>` that matches where the user was created |
+| `No servers found yet` for `127.0.0.1` (from host) | SSM session died (token expired after `--session-duration 900`) | Re-run `saml2aws login` and restart `aws ssm start-session` |
+
 ## Local Development (without Docker)
 
 If you want to run the backend directly on your machine:
